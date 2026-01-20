@@ -1,0 +1,70 @@
+{
+  "name": "RobloxRojoTemplate",
+  "tree": {
+    "$className": "DataModel",
+
+    "Workspace": {
+      "$ignoreUnknownInstances": true,
+      "Map": { "$path": "src/Workspace/Map", "$ignoreUnknownInstances": true },
+      "Systems": { "$path": "src/Workspace/Systems", "$ignoreUnknownInstances": true }
+    },
+
+    "ReplicatedStorage": {
+      "$ignoreUnknownInstances": true,
+      "Modules": { "$path": "src/ReplicatedStorage/Modules", "$ignoreUnknownInstances": true },
+      "Remotes": { "$path": "src/ReplicatedStorage/Remotes", "$ignoreUnknownInstances": true },
+      "Shared": { "$path": "src/ReplicatedStorage/Shared", "$ignoreUnknownInstances": true }
+    },
+
+    "ServerScriptService": {
+      "$ignoreUnknownInstances": true,
+      "Server": { "$path": "src/ServerScriptService/Server", "$ignoreUnknownInstances": true }
+    },
+
+    "ServerStorage": {
+      "$ignoreUnknownInstances": true,
+      "Modules": { "$path": "src/ServerStorage/Modules", "$ignoreUnknownInstances": true },
+      "Assets": { "$path": "src/ServerStorage/Assets", "$ignoreUnknownInstances": true }
+    },
+
+    "StarterGui": {
+      "$ignoreUnknownInstances": true,
+      "UI": { "$path": "src/StarterGui/UI", "$ignoreUnknownInstances": true }
+    },
+
+    "StarterPack": {
+      "$ignoreUnknownInstances": true,
+      "Tools": { "$path": "src/StarterPack/Tools", "$ignoreUnknownInstances": true }
+    },
+
+    "StarterPlayer": {
+      "$ignoreUnknownInstances": true,
+
+      "StarterPlayerScripts": {
+        "$ignoreUnknownInstances": true,
+        "Client": { "$path": "src/StarterPlayer/StarterPlayerScripts/Client", "$ignoreUnknownInstances": true }
+      },
+
+      "StarterCharacterScripts": {
+        "$ignoreUnknownInstances": true,
+        "Character": { "$path": "src/StarterPlayer/StarterCharacterScripts/Character", "$ignoreUnknownInstances": true }
+      }
+    },
+
+ 
+
+    "SoundService": {
+      "$ignoreUnknownInstances": true,
+      "Sounds": { "$path": "src/SoundService/Sounds", "$ignoreUnknownInstances": true }
+    },
+
+    "Teams": {
+      "$ignoreUnknownInstances": true,
+      "Config": { "$path": "src/Teams/Config", "$ignoreUnknownInstances": true }
+    },
+
+    "Chat": {
+      "$ignoreUnknownInstances": true
+    }
+  }
+}

@@ -1,0 +1,19 @@
+# Project place file
+/Trainyourslave.rbxlx
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Roblox files (don’t commit places/models unless you want to)
+*.rbxl
+*.rbxlx
+*.rbxm
+*.rbxmx
+
+# Logs
+*.log
+
+sourcemap.json
