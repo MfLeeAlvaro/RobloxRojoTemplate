@@ -18,7 +18,7 @@
 
     "ServerScriptService": {
       "$ignoreUnknownInstances": true,
-      "Server": { "$path": "src/ServerScriptService/Server", "$ignoreUnknownInstances": true }
+      "$path": "src/ServerScriptService"
     },
 
     "ServerStorage": {
@@ -42,7 +42,7 @@
 
       "StarterPlayerScripts": {
         "$ignoreUnknownInstances": true,
-        "Client": { "$path": "src/StarterPlayer/StarterPlayerScripts/Client", "$ignoreUnknownInstances": true }
+        "$path": "src/StarterPlayer/StarterPlayerScripts"
       },
 
       "StarterCharacterScripts": {
