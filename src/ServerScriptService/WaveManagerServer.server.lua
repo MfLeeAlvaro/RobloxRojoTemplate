@@ -755,9 +755,11 @@ end
 	enemy:SetAttribute("TargetUserId", userId)
 	enemy:SetAttribute("IslandId", islandId)
 	enemy:SetAttribute("GridId", grid:GetFullName()) -- Also set GridId for compatibility
+	enemy:SetAttribute("UnitType", templateName) -- Set UnitType for merge system
 	enemy:SetAttribute("Wave", wave)
 	enemy:SetAttribute("IsMiniBoss", isMiniBoss)
 	enemy:SetAttribute("IsBoss", isBoss)
+	enemy:SetAttribute("StarLevel", 0) -- Initialize star level
 	
 	print("[WaveManagerServer]   ✅ Set attributes: IslandId=" .. tostring(islandId) .. ", GridId=" .. grid:GetFullName())
 	
@@ -781,6 +783,14 @@ end
 		hum.MaxHealth = math.floor(baseMax * healthMult)
 		hum.Health = hum.MaxHealth
 		enemy:SetAttribute("DamageMult", damageMult)
+		
+		-- Store BASE stats BEFORE any scaling (for exponential star scaling: 2^star)
+		-- These are the stats AFTER wave difficulty scaling, but BEFORE star scaling
+		enemy:SetAttribute("BaseDamage", enemy:GetAttribute("AttackDamage") or DEFAULT_ENEMY_DAMAGE)
+		enemy:SetAttribute("BaseHealth", hum.MaxHealth) -- Store scaled health as base
+		enemy:SetAttribute("BaseRange", enemy:GetAttribute("AttackRange") or DEFAULT_ENEMY_RANGE)
+		enemy:SetAttribute("BaseCooldown", enemy:GetAttribute("AttackCooldown") or DEFAULT_ENEMY_COOLDOWN)
+		enemy:SetAttribute("BaseDamageMult", damageMult) -- Store wave difficulty multiplier as base
 	end
 
 	-- Position enemy

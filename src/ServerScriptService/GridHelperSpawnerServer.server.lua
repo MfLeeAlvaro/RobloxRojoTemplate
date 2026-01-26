@@ -122,6 +122,26 @@ local function findClosestUnownedGrid(position)
 	return closestGrid
 end
 
+-- Function to get IslandId from a grid part (for merge system)
+local function getIslandIdFromGrid(gridPart)
+	if not gridPart then return nil end
+	
+	-- Walk up the hierarchy to find Island model
+	local current = gridPart
+	while current and current.Parent and current.Parent ~= workspace do
+		if current:IsA("Model") then
+			-- Check if it's an island (must have numeric IslandId)
+			local islandId = current:GetAttribute("IslandId")
+			if typeof(islandId) == "number" then
+				return islandId
+			end
+		end
+		current = current.Parent
+	end
+	
+	return nil
+end
+
 -- Function to assign island to player when they spawn
 local function assignIslandOnSpawn(player)
 	-- Wait for character to spawn
@@ -189,11 +209,12 @@ local GRID_ROWS = 10
 -- ============================================================
 -- UPDATED: Occupancy is now per-grid + per-player
 -- OLD CODE (line 40): local occupied = {} (per-player only)
--- NEW CODE: occupied[grid][userId][row][col] = model
+-- NEW CODE: occupied[grid][userId][row][col] = model (stores helper instance)
 -- WHY CHANGED: Each grid needs its own occupancy tracking,
---   so units on different grids don't conflict
+--   so units on different grids don't conflict.
+--   Also stores helper instance to auto-clear stale entries.
 -- ============================================================
--- Occupancy per-grid + per-player: occupied[grid][userId][row][col] = model
+-- Occupancy per-grid + per-player: occupied[grid][userId][row][col] = helperModel
 local occupied = {}
 
 local function ensurePlayerTable(grid, userId)
@@ -206,6 +227,23 @@ local function ensurePlayerTable(grid, userId)
 			occupied[grid][userId][r] = {}
 		end
 	end
+end
+
+-- Check if cell is occupied, auto-clearing stale entries
+local function isCellOccupied(grid, userId, r, c)
+	ensurePlayerTable(grid, userId)
+	local cell = occupied[grid][userId][r] and occupied[grid][userId][r][c]
+	if not cell then
+		return false
+	end
+
+	-- If the instance is gone or no longer in Helpers, free the cell
+	if typeof(cell) ~= "Instance" or (not cell.Parent) or (cell.Parent ~= workspace:FindFirstChild("Helpers")) then
+		occupied[grid][userId][r][c] = nil
+		return false
+	end
+
+	return true
 end
 
 -- ============================================================
@@ -425,13 +463,13 @@ placeHelperEvent.OnServerEvent:Connect(function(player, hitGrid, worldPosition, 
 	ensurePlayerTable(hitGrid, player.UserId)
 
 	-- ============================================================
-	-- UPDATED: Check occupancy on the specific grid
+	-- UPDATED: Check occupancy on the specific grid (with auto-cleanup)
 	-- OLD CODE (line 143): if occupied[player.UserId][row][col] then
-	-- NEW CODE: if occupied[hitGrid][player.UserId][row][col] then
-	-- WHY CHANGED: Occupancy is now per-grid + per-player
+	-- NEW CODE: if isCellOccupied(hitGrid, player.UserId, row, col) then
+	-- WHY CHANGED: Occupancy is now per-grid + per-player, and auto-clears stale entries
 	-- ============================================================
-	-- Occupancy check (per-grid + per-player)
-	if occupied[hitGrid][player.UserId][row][col] then
+	-- Occupancy check (per-grid + per-player, with auto-cleanup)
+	if isCellOccupied(hitGrid, player.UserId, row, col) then
 		placeHelperEvent:FireClient(player, false, "That cell is already occupied.")
 		return
 	end
@@ -464,10 +502,26 @@ placeHelperEvent.OnServerEvent:Connect(function(player, hitGrid, worldPosition, 
 
 	local unit = modelToClone:Clone()
 	
+	-- Get IslandId from grid (for merge system)
+	local islandId = getIslandIdFromGrid(hitGrid)
+	
 	-- Set attributes BEFORE parenting so ChildAdded events can read them
 	unit:SetAttribute("OwnerUserId", player.UserId)
 	unit:SetAttribute("UnitType", helperName)
 	unit:SetAttribute("GridId", hitGrid:GetFullName()) -- Store grid ID for combat system
+	unit:SetAttribute("SpawnRow", row) -- Store spawn row for occupancy cleanup
+	unit:SetAttribute("SpawnCol", col) -- Store spawn col for occupancy cleanup
+	if islandId then
+		unit:SetAttribute("IslandId", islandId) -- Store IslandId for merge system
+	end
+	
+	-- Store BASE stats for exponential scaling (2^star)
+	local hum = unit:FindFirstChildOfClass("Humanoid")
+	unit:SetAttribute("BaseDamage", unit:GetAttribute("AttackDamage") or 12)
+	unit:SetAttribute("BaseHealth", hum and hum.MaxHealth or 100)
+	unit:SetAttribute("BaseRange", unit:GetAttribute("AttackRange") or 14)
+	unit:SetAttribute("BaseCooldown", unit:GetAttribute("AttackCooldown") or 1.1)
+	unit:SetAttribute("StarLevel", 0) -- Initialize star level
 
 	--========================================================
 	-- ✅ FIX #1: Pick/set PrimaryPart BEFORE PivotTo
@@ -517,13 +571,38 @@ placeHelperEvent.OnServerEvent:Connect(function(player, hitGrid, worldPosition, 
 	unit.Parent = helpersFolder
 
 	-- ============================================================
-	-- UPDATED: Store occupancy on the specific grid
-	-- OLD CODE (line 199): occupied[player.UserId][row][col] = unit
+	-- UPDATED: Store occupancy on the specific grid (stores helper instance)
+	-- OLD CODE (line 199): occupied[player.UserId][row][col] = true
 	-- NEW CODE: occupied[hitGrid][player.UserId][row][col] = unit
-	-- WHY CHANGED: Occupancy is now per-grid + per-player
+	-- WHY CHANGED: Occupancy is now per-grid + per-player, stores instance for cleanup
 	-- ============================================================
+	ensurePlayerTable(hitGrid, player.UserId)
 	occupied[hitGrid][player.UserId][row][col] = unit
 	placeHelperEvent:FireClient(player, true, ("Placed %s at (%d, %d)"):format(helperName, row, col))
+end)
+
+-- Auto-free occupancy when helper is removed (merge/destroy)
+local helpersFolder = workspace:WaitForChild("Helpers")
+helpersFolder.ChildRemoved:Connect(function(helper)
+	if not helper:IsA("Model") then return end
+
+	local gridId = helper:GetAttribute("GridId")
+	local r = helper:GetAttribute("SpawnRow")
+	local c = helper:GetAttribute("SpawnCol")
+	local userId = helper:GetAttribute("OwnerUserId")
+
+	if gridId and typeof(r) == "number" and typeof(c) == "number" and typeof(userId) == "number" then
+		-- Find the grid by its full name
+		local grid = workspace:FindFirstChild(gridId, true)
+		if grid and grid:IsA("BasePart") then
+			if occupied[grid] and occupied[grid][userId] and occupied[grid][userId][r] then
+				-- only clear if it was pointing to THIS helper
+				if occupied[grid][userId][r][c] == helper then
+					occupied[grid][userId][r][c] = nil
+				end
+			end
+		end
+	end
 end)
 
 print("✅ GridHelperSpawnerServer loaded! (Multi-grid support + Island ownership enabled)")

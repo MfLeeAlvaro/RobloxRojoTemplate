@@ -350,16 +350,7 @@ local function handlePlace(player, helperName, hitCFrame)
 		return
 	end
 	
-	-- Check placed count limit
-	local placedCount = getPlacedCount(player)
-	if placedCount >= 3 then
-		print("[HelperPlacement] ERROR: Player has max helpers (3)")
-		helperResponse:FireClient(player, "PlaceResult", {
-			success = false,
-			message = "You can only place 3 helpers!",
-		})
-		return
-	end
+	-- Placement limit removed - will be implemented separately later
 	
 	-- Validate distance (≤60 studs)
 	local character = player.Character
@@ -421,9 +412,38 @@ local function handlePlace(player, helperName, hitCFrame)
 		end
 	end
 	
-	-- Position helper
+	-- Calculate facing direction - helpers face opposite of grid's LookVector (towards enemy side)
+	-- This matches GridHelperSpawnerServer's original behavior
+	local faceDir = -targetGrid.CFrame.LookVector
+	faceDir = Vector3.new(faceDir.X, 0, faceDir.Z).Unit -- Keep horizontal, normalize
+	
+	-- Get position from hitCFrame
+	local position = hitCFrame.Position
+	
+	-- Calculate Y offset (place on grid surface)
+	local yOffset = 0
 	if modelToPosition:IsA("Model") and modelToPosition.PrimaryPart then
-		modelToPosition:PivotTo(hitCFrame)
+		yOffset = modelToPosition.PrimaryPart.Size.Y / 2
+	else
+		-- Find first part for size calculation
+		for _, part in ipairs(helper:GetDescendants()) do
+			if part:IsA("BasePart") then
+				yOffset = part.Size.Y / 2
+				break
+			end
+		end
+	end
+	
+	-- Adjust position to be on grid surface
+	local gridWorldPos = targetGrid.CFrame:PointToWorldSpace(Vector3.new(0, targetGrid.Size.Y / 2 + yOffset, 0))
+	position = Vector3.new(position.X, gridWorldPos.Y, position.Z)
+	
+	-- Create CFrame with proper facing (same as GridHelperSpawnerServer)
+	local facingCFrame = CFrame.lookAt(position, position + faceDir)
+	
+	-- Position helper with correct facing
+	if modelToPosition:IsA("Model") and modelToPosition.PrimaryPart then
+		modelToPosition:PivotTo(facingCFrame)
 	else
 		-- Fallback: find any part and position it
 		local firstPart = nil
@@ -434,18 +454,45 @@ local function handlePlace(player, helperName, hitCFrame)
 			end
 		end
 		if firstPart then
-			helper:PivotTo(hitCFrame)
+			helper:PivotTo(facingCFrame)
 		end
 	end
 	
 	-- Parent to workspace.Helpers
 	helper.Parent = helpersFolder
 	
-	-- Set attributes
+	-- Get IslandId from grid (for merge system and wave system)
+	local function getIslandIdFromGrid(gridPart)
+		if not gridPart then return nil end
+		
+		-- Walk up the hierarchy to find Island model
+		local current = gridPart
+		while current and current.Parent and current.Parent ~= workspace do
+			if current:IsA("Model") then
+				-- Check if it's an island (must have numeric IslandId)
+				local islandId = current:GetAttribute("IslandId")
+				if typeof(islandId) == "number" then
+					return islandId
+				end
+			end
+			current = current.Parent
+		end
+		
+		return nil
+	end
+	
+	local islandId = getIslandIdFromGrid(targetGrid)
+	
+	-- Set attributes (CRITICAL for WaveManagerServer and merge system)
 	helper:SetAttribute("OwnerUserId", player.UserId)
 	helper:SetAttribute("HelperName", helperName)
+	helper:SetAttribute("GridId", targetGrid:GetFullName()) -- Required for WaveManagerServer to find island
+	if islandId then
+		helper:SetAttribute("IslandId", islandId) -- Required for merge system
+	end
 	
 	print("[HelperPlacement] Successfully placed", helperName, "for", player.Name, "at", hitCFrame.Position)
+	print("[HelperPlacement]   ✅ Set GridId=" .. targetGrid:GetFullName() .. (islandId and (", IslandId=" .. tostring(islandId)) or ""))
 	
 	helperResponse:FireClient(player, "PlaceResult", {
 		success = true,
@@ -475,6 +522,46 @@ requestPlaceHelper.OnServerEvent:Connect(function(player, helperName, hitCFrame)
 			message = "Invalid request!",
 		})
 	end
+end)
+
+-- Sync display models to ReplicatedStorage for client ViewportFrames
+local function syncDisplayModels()
+	local displayFolder = ReplicatedStorage:FindFirstChild("HelperDisplayTemplates")
+	if not displayFolder then
+		displayFolder = Instance.new("Folder")
+		displayFolder.Name = "HelperDisplayTemplates"
+		displayFolder.Parent = ReplicatedStorage
+		print("[HelperPlacement] Created HelperDisplayTemplates folder")
+	end
+	
+	-- Clear existing display models
+	for _, child in ipairs(displayFolder:GetChildren()) do
+		child:Destroy()
+	end
+	
+	-- Clone templates to ReplicatedStorage
+	for _, template in ipairs(templatesFolder:GetChildren()) do
+		if template:IsA("Model") or template:IsA("Folder") then
+			local displayModel = template:Clone()
+			displayModel.Name = template.Name
+			displayModel.Parent = displayFolder
+			print("[HelperPlacement] Synced display model: " .. template.Name)
+		end
+	end
+end
+
+-- Sync on startup
+syncDisplayModels()
+
+-- Re-sync when templates change
+templatesFolder.ChildAdded:Connect(function()
+	task.wait(0.5)
+	syncDisplayModels()
+end)
+
+templatesFolder.ChildRemoved:Connect(function()
+	task.wait(0.5)
+	syncDisplayModels()
 end)
 
 -- Send helpers list when player joins
