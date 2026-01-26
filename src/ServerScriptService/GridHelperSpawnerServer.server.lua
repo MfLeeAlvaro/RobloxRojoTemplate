@@ -283,18 +283,40 @@ end
 
 local playerOrder = {}
 
+-- Send current grid ownership state to a player when they join
+local function sendGridOwnershipToPlayer(player)
+	task.wait(1) -- Wait for client to be ready
+	for grid, ownerId in pairs(gridOwnerUserId) do
+		if grid and grid.Parent then
+			local gridId = grid:GetFullName()
+			gridOwnershipEvent:FireClient(player, gridId, ownerId)
+			print("[GridHelperSpawnerServer] Sent grid ownership to " .. player.Name .. ": " .. gridId .. " -> " .. tostring(ownerId))
+		end
+	end
+end
+
 Players.PlayerAdded:Connect(function(plr)
 	table.insert(playerOrder, plr.UserId)
+	
+	-- Send current grid ownership state
+	task.spawn(function()
+		sendGridOwnershipToPlayer(plr)
+	end)
 	
 	-- Assign island when player spawns
 	plr.CharacterAdded:Connect(function()
 		assignIslandOnSpawn(plr)
+		-- Send ownership again after assignment
+		task.wait(0.5)
+		sendGridOwnershipToPlayer(plr)
 	end)
 	
 	-- Also try to assign immediately if character already exists
 	if plr.Character then
 		task.spawn(function()
 			assignIslandOnSpawn(plr)
+			task.wait(0.5)
+			sendGridOwnershipToPlayer(plr)
 		end)
 	end
 end)
@@ -358,9 +380,10 @@ placeHelperEvent.OnServerEvent:Connect(function(player, hitGrid, worldPosition, 
 	-- ADDED: Ownership check - only grid owner can place
 	-- WHY: Each island is owned by one player, only they can place
 	-- ============================================================
-	if gridOwnerUserId[hitGrid] ~= player.UserId then
-		local ownerId = gridOwnerUserId[hitGrid]
-		print("[GridHelperSpawnerServer] ❌ Placement denied: Player " .. player.Name .. " tried to place on grid owned by userId " .. tostring(ownerId))
+	local gridOwner = gridOwnerUserId[hitGrid]
+	if gridOwner ~= player.UserId then
+		print("[GridHelperSpawnerServer] ❌ Placement denied: Player " .. player.Name .. " (userId: " .. player.UserId .. ") tried to place on grid " .. hitGrid:GetFullName() .. " owned by userId " .. tostring(gridOwner))
+		print("[GridHelperSpawnerServer] Debug - Player's assigned grid: " .. tostring(ownedGridByUserId[player.UserId] and ownedGridByUserId[player.UserId]:GetFullName() or "none"))
 		placeHelperEvent:FireClient(player, false, "This island belongs to another player.")
 		return
 	end
@@ -414,8 +437,23 @@ placeHelperEvent.OnServerEvent:Connect(function(player, hitGrid, worldPosition, 
 	end
 
 	local template = TEMPLATES_FOLDER:FindFirstChild(helperName)
-	if not template or not template:IsA("Model") then
+	if not template then
 		placeHelperEvent:FireClient(player, false, "Invalid unit: " .. helperName)
+		return
+	end
+	
+	-- Handle folders (templates are in folders)
+	local modelToClone = template
+	if template:IsA("Folder") then
+		modelToClone = template:FindFirstChildOfClass("Model")
+		if not modelToClone then
+			-- If no model found, use the folder itself
+			modelToClone = template
+		end
+	end
+	
+	if not modelToClone:IsA("Model") then
+		placeHelperEvent:FireClient(player, false, "Template must be a Model: " .. helperName)
 		return
 	end
 
@@ -424,8 +462,12 @@ placeHelperEvent.OnServerEvent:Connect(function(player, hitGrid, worldPosition, 
 	helpersFolder.Name = "Helpers"
 	helpersFolder.Parent = workspace
 
-	local unit = template:Clone()
-	unit.Parent = helpersFolder
+	local unit = modelToClone:Clone()
+	
+	-- Set attributes BEFORE parenting so ChildAdded events can read them
+	unit:SetAttribute("OwnerUserId", player.UserId)
+	unit:SetAttribute("UnitType", helperName)
+	unit:SetAttribute("GridId", hitGrid:GetFullName()) -- Store grid ID for combat system
 
 	--========================================================
 	-- ✅ FIX #1: Pick/set PrimaryPart BEFORE PivotTo
@@ -469,10 +511,10 @@ placeHelperEvent.OnServerEvent:Connect(function(player, hitGrid, worldPosition, 
 		return
 	end
 
-	unit:SetAttribute("OwnerUserId", player.UserId)
-	unit:SetAttribute("UnitType", helperName)
-
 	unit:PivotTo(cf) -- ✅ correct placement happens here
+	
+	-- Parent AFTER attributes and positioning are set
+	unit.Parent = helpersFolder
 
 	-- ============================================================
 	-- UPDATED: Store occupancy on the specific grid

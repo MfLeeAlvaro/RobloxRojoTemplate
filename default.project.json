@@ -11,6 +11,11 @@
 
     "ReplicatedStorage": {
       "$ignoreUnknownInstances": true,
+      "Packages": { "$path": "Packages" },
+      "Source": {
+        "$ignoreUnknownInstances": true,
+        "Features": { "$path": "src/features", "$ignoreUnknownInstances": true }
+      },
       "Modules": { "$path": "src/ReplicatedStorage/Modules", "$ignoreUnknownInstances": true },
       "Remotes": { "$path": "src/ReplicatedStorage/Remotes", "$ignoreUnknownInstances": true },
       "Shared": { "$path": "src/ReplicatedStorage/Shared", "$ignoreUnknownInstances": true }

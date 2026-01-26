@@ -66,6 +66,7 @@ gridOwnershipEvent.OnClientEvent:Connect(function(gridId, ownerUserId)
 	-- gridId is grid:GetFullName() string, ownerUserId is the owner's userId (or nil if unowned)
 	gridOwners[gridId] = ownerUserId
 	print("[GridPlacementSystem] Grid ownership updated: " .. gridId .. " -> userId " .. tostring(ownerUserId))
+	print("[GridPlacementSystem] Local player userId: " .. player.UserId .. ", Is owned by me: " .. tostring(ownerUserId == player.UserId))
 end)
 
 -- Function to check if a grid is owned by the local player
@@ -94,8 +95,7 @@ local function getMouseWorldOnAnyGrid()
 	end
 
 	local params = RaycastParams.new()
-	-- Note: Linter may show error, but Enum.RaycastFilterType.Whitelist is valid in Roblox
-	params.FilterType = Enum.RaycastFilterType.Whitelist
+	params.FilterType = Enum.RaycastFilterType.Include
 	params.FilterDescendantsInstances = cachedGridFloors
 	params.IgnoreWater = true
 
@@ -327,6 +327,22 @@ end)
 --   (server will also validate, but this prevents unnecessary network calls)
 -- ============================================================
 mouse.Button1Down:Connect(function()
+	-- Check for shop placement first
+	if _G.HelperShopPlace then
+		local hitPosition, hitGridPart = getMouseWorldOnAnyGrid()
+		if hitPosition and hitGridPart then
+			if isGridOwnedByLocalPlayer(hitGridPart) then
+				local snappedWorld = snapToGridWorld(hitPosition, hitGridPart)
+				if snappedWorld then
+					local gridId = hitGridPart:GetFullName()
+					_G.HelperShopPlace(snappedWorld, gridId)
+					return
+				end
+			end
+		end
+	end
+	
+	-- Fallback to old system
 	if not currentSelection then return end
 
 	local hitPosition, hitGridPart = getMouseWorldOnAnyGrid()
@@ -337,7 +353,10 @@ mouse.Button1Down:Connect(function()
 	-- WHY: Block placement on grids not owned by local player
 	-- ============================================================
 	if not isGridOwnedByLocalPlayer(hitGridPart) then
-		print("[GridPlacementSystem] ❌ Cannot place: Grid not owned by local player")
+		local gridId = hitGridPart:GetFullName()
+		local ownerId = gridOwners[gridId]
+		print("[GridPlacementSystem] ❌ Cannot place: Grid " .. gridId .. " not owned by local player")
+		print("[GridPlacementSystem] Debug - Grid owner: " .. tostring(ownerId) .. ", My userId: " .. player.UserId)
 		return
 	end
 
