@@ -491,6 +491,93 @@ local function handlePlace(player, helperName, hitCFrame)
 		helper:SetAttribute("IslandId", islandId) -- Required for merge system
 	end
 	
+	-- Calculate row/col from position for HelperRespawnManager
+	local function worldToCellForGrid(worldPos, grid)
+		if not grid then return nil, nil end
+		local localPos = grid.CFrame:PointToObjectSpace(worldPos)
+		local halfX = grid.Size.X / 2
+		local halfZ = grid.Size.Z / 2
+		if localPos.X < -halfX or localPos.X > halfX or localPos.Z < -halfZ or localPos.Z > halfZ then
+			return nil, nil
+		end
+		local x01 = localPos.X + halfX
+		local z01 = localPos.Z + halfZ
+		local GRID_SIZE = 5
+		local col = math.floor(x01 / GRID_SIZE) + 1
+		local row = math.floor(z01 / GRID_SIZE) + 1
+		return row, col
+	end
+	
+	local placeRow, placeCol = worldToCellForGrid(hitCFrame.Position, targetGrid)
+	if not placeRow or not placeCol then
+		helperResponse:FireClient(player, "PlaceResult", {
+			success = false,
+			message = "Invalid tile position!",
+		})
+		return
+	end
+	
+	-- Check if placement is on player side (rows 1-5 only)
+	local PLAYER_MIN_ROW, PLAYER_MAX_ROW = 1, 5
+	if placeRow < PLAYER_MIN_ROW or placeRow > PLAYER_MAX_ROW then
+		helperResponse:FireClient(player, "PlaceResult", {
+			success = false,
+			message = "You can only place on your side.",
+		})
+		return
+	end
+	
+	-- Check if tile is already occupied (check blueprints - authoritative source)
+	local gridId = targetGrid:GetFullName()
+	if _G.IsHelperTileOccupied then
+		if _G.IsHelperTileOccupied(gridId, placeRow, placeCol) then
+			helperResponse:FireClient(player, "PlaceResult", {
+				success = false,
+				message = "That tile is already occupied!",
+			})
+			return
+		end
+	else
+		-- Fallback: check board instances if blueprint system not loaded
+		for _, existingHelper in ipairs(helpersFolder:GetChildren()) do
+			if existingHelper:IsA("Model") then
+				local existingGridId = existingHelper:GetAttribute("GridId")
+				local existingRow = existingHelper:GetAttribute("PlaceRow")
+				local existingCol = existingHelper:GetAttribute("PlaceCol")
+				
+				if existingGridId == gridId 
+					and typeof(existingRow) == "number" and existingRow == placeRow
+					and typeof(existingCol) == "number" and existingCol == placeCol then
+					helperResponse:FireClient(player, "PlaceResult", {
+						success = false,
+						message = "That tile is already occupied!",
+					})
+					return
+				end
+			end
+		end
+	end
+	
+	-- Set tile position attributes
+	helper:SetAttribute("PlaceRow", placeRow)
+	helper:SetAttribute("PlaceCol", placeCol)
+	
+	-- Set HelperType
+	helper:SetAttribute("HelperType", helperName)
+	
+	-- Store OriginalCFrame if not set
+	if not helper:GetAttribute("OriginalCFrame") then
+		local root = helper:FindFirstChild("HumanoidRootPart") or helper.PrimaryPart
+		if root then
+			helper:SetAttribute("OriginalCFrame", root.CFrame)
+		end
+	end
+	
+	-- Save blueprint (authoritative copy)
+	if _G.SaveHelperBlueprint then
+		_G.SaveHelperBlueprint(helper)
+	end
+	
 	print("[HelperPlacement] Successfully placed", helperName, "for", player.Name, "at", hitCFrame.Position)
 	print("[HelperPlacement]   ✅ Set GridId=" .. targetGrid:GetFullName() .. (islandId and (", IslandId=" .. tostring(islandId)) or ""))
 	

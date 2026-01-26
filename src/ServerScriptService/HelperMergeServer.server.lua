@@ -327,7 +327,29 @@ local function tryMergeIsland(islandId)
 					applyStarScaling(keep)
 					updateStarGui(keep)
 
-					-- remove the other two
+					-- Update blueprint for the kept helper (star level changed)
+					if _G.UpdateHelperBlueprint then
+						_G.UpdateHelperBlueprint(keep)
+					end
+
+					-- Remove blueprints for the merged helpers
+					if _G.RemoveHelperBlueprint then
+						local gridIdA = a:GetAttribute("GridId")
+						local rowA = a:GetAttribute("PlaceRow") or a:GetAttribute("SpawnRow")
+						local colA = a:GetAttribute("PlaceCol") or a:GetAttribute("SpawnCol")
+						if gridIdA and rowA and colA then
+							_G.RemoveHelperBlueprint(gridIdA, rowA, colA)
+						end
+						
+						local gridIdB = b:GetAttribute("GridId")
+						local rowB = b:GetAttribute("PlaceRow") or b:GetAttribute("SpawnRow")
+						local colB = b:GetAttribute("PlaceCol") or b:GetAttribute("SpawnCol")
+						if gridIdB and rowB and colB then
+							_G.RemoveHelperBlueprint(gridIdB, rowB, colB)
+						end
+					end
+
+					-- remove the other two board instances
 					a:Destroy()
 					b:Destroy()
 

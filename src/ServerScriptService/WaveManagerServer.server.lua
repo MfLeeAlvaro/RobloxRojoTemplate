@@ -526,10 +526,11 @@ local function reviveAndHealHelpers(island)
 		local hum = helper:FindFirstChildOfClass("Humanoid")
 		if hum then
 			-- REVIVE if dead
-			if hum.Health <= 0 then
+			if hum.Health <= 0 or helper:GetAttribute("IsDead") == true then
 				-- Humanoid:ChangeState helps break "Dead" state weirdness sometimes
 				hum:ChangeState(Enum.HumanoidStateType.GettingUp)
 				hum.Health = 1
+				helper:SetAttribute("IsDead", false)
 			end
 
 			-- HEAL to full
@@ -539,6 +540,18 @@ local function reviveAndHealHelpers(island)
 		-- send back + freeze for prep
 		resetNPCPosition(helper)
 		freezeNPC(helper, false)
+		
+		-- Restore Tweaker shopping cart if it was broken
+		if helper.Name:find("Tweaker") then
+			-- Signal TweakerCharge script to restore cart
+			local restoreCartEvent = ReplicatedStorage:FindFirstChild("RestoreTweakerCart")
+			if not restoreCartEvent then
+				restoreCartEvent = Instance.new("BindableEvent")
+				restoreCartEvent.Name = "RestoreTweakerCart"
+				restoreCartEvent.Parent = ReplicatedStorage
+			end
+			restoreCartEvent:Fire(helper)
+		end
 	end
 end
 
@@ -1004,6 +1017,15 @@ local function startWaveForPlayer(player)
 	activeWavesByIsland[islandId] = true
 	waveActiveFlags[islandId] = true
 	
+	-- Signal wave state change to HelperRespawnManager
+	local waveStateEvent = ReplicatedStorage:FindFirstChild("WaveStateEvent")
+	if not waveStateEvent then
+		waveStateEvent = Instance.new("BindableEvent")
+		waveStateEvent.Name = "WaveStateEvent"
+		waveStateEvent.Parent = ReplicatedStorage
+	end
+	waveStateEvent:Fire(islandId, true)
+	
 	local wave = currentWaveNumbers[islandId] or 1
 	currentWaveNumbers[islandId] = wave
 	
@@ -1048,14 +1070,25 @@ local function startWaveForPlayer(player)
 	
 	print("[WaveManagerServer] ✅ All NPCs unfrozen for wave " .. wave)
 	
-	-- Wave completion loop
-	task.spawn(function()
-		while waveActiveFlags[islandId] and activeWavesByIsland[islandId] do
-			local currentHelpers = getHelpersForIsland(playerIsland)
-			local currentEnemies = getEnemiesForIsland(playerIsland)
-			
-			-- Check win/loss conditions
-			if #currentHelpers == 0 then
+		-- Wave completion loop
+		task.spawn(function()
+			while waveActiveFlags[islandId] and activeWavesByIsland[islandId] do
+				local currentHelpers = getHelpersForIsland(playerIsland)
+				local currentEnemies = getEnemiesForIsland(playerIsland)
+				
+				-- Check win/loss conditions
+				-- Count only visible/active helpers (not hidden/dead ones)
+				local visibleHelpers = {}
+				for _, h in ipairs(currentHelpers) do
+					if h:GetAttribute("Dead") ~= true then
+						local hum = h:FindFirstChildOfClass("Humanoid")
+						if hum and hum.Health > 0 then
+							table.insert(visibleHelpers, h)
+						end
+					end
+				end
+				
+				if #visibleHelpers == 0 then
 				print("[WaveManagerServer] 💀 LOST: All helpers dead on island " .. tostring(islandId))
 				waveActiveFlags[islandId] = false
 				activeWavesByIsland[islandId] = false
@@ -1064,6 +1097,12 @@ local function startWaveForPlayer(player)
 				for _, enemy in ipairs(currentEnemies) do
 					freezeNPC(enemy, true)
 				end
+				
+				-- Reset helpers even on loss (respawn fresh from blueprints)
+				if _G.ResetHelpersOnIsland then
+					_G.ResetHelpersOnIsland(islandId)
+				end
+				
 				return
 			end
 
@@ -1073,8 +1112,13 @@ local function startWaveForPlayer(player)
 				activeWavesByIsland[islandId] = false
 				currentWaveNumbers[islandId] = wave + 1
 				
-				-- ✅ Reset helpers (revive + full heal + reset + freeze)
-				reviveAndHealHelpers(playerIsland)
+				-- ✅ Reset helpers: destroy board instances, respawn fresh from blueprints
+				if _G.ResetHelpersOnIsland then
+					_G.ResetHelpersOnIsland(islandId)
+				else
+					-- Fallback: use old revive system if HelperBlueprintManager not loaded
+					reviveAndHealHelpers(playerIsland)
+				end
 				
 				-- ✅ ENEMY BODIES DISAPPEAR: wipe all enemies (alive + dead)
 				destroyEnemiesForIsland(playerIsland)
@@ -1111,6 +1155,41 @@ startWaveEvent.OnServerEvent:Connect(function(player)
 end)
 	connectionEstablished = true
 	print("[WaveManagerServer] ✅ StartWaveEvent handler connected (singleton)")
+end
+
+-- ===== GRID BOUNDARY FUNCTIONS =====
+-- Check if a position is within grid bounds
+local function isPositionInGrid(position, grid)
+	if not grid then return false end
+	local localPos = grid.CFrame:PointToObjectSpace(position)
+	local halfX = grid.Size.X / 2
+	local halfZ = grid.Size.Z / 2
+	return math.abs(localPos.X) <= halfX and math.abs(localPos.Z) <= halfZ
+end
+
+-- Constrain a position to grid bounds
+local function constrainToGrid(position, grid)
+	if not grid then return position end
+	local localPos = grid.CFrame:PointToObjectSpace(position)
+	local halfX = grid.Size.X / 2
+	local halfZ = grid.Size.Z / 2
+	-- Clamp to grid bounds
+	local clampedX = math.clamp(localPos.X, -halfX, halfX)
+	local clampedZ = math.clamp(localPos.Z, -halfZ, halfZ)
+	local clampedLocal = Vector3.new(clampedX, localPos.Y, clampedZ)
+	return grid.CFrame:PointToWorldSpace(clampedLocal)
+end
+
+-- Get grid from helper/enemy
+local function getGridFromNPC(npc)
+	local gridId = npc:GetAttribute("GridId")
+	if gridId and typeof(gridId) == "string" then
+		local island = getIslandFromGridId(gridId)
+		if island then
+			return getGridFromIsland(island)
+		end
+	end
+	return nil
 end
 
 -- ===== COMBAT FUNCTIONS =====
@@ -1207,11 +1286,16 @@ RunService.Heartbeat:Connect(function()
 										dealDamage(helper, target, damage)
 									end
 								elseif target and dist > range then
-									-- Move towards target
+									-- Move towards target (constrained to grid)
 									local helperRoot = getRoot(helper)
 									local targetRoot = getRoot(target)
 									if helperRoot and targetRoot then
-										hum:MoveTo(targetRoot.Position)
+										local grid = getGridFromNPC(helper)
+										local moveTarget = targetRoot.Position
+										if grid then
+											moveTarget = constrainToGrid(moveTarget, grid)
+										end
+										hum:MoveTo(moveTarget)
 				end
 			end
 							end
@@ -1298,10 +1382,15 @@ RunService.Heartbeat:Connect(function()
 									if dist <= range and canAttack(enemy, cooldown) then
 										dealDamage(enemy, target, damage)
 									else
-										-- Always move towards target if not in range
-										if dist > range then
-											hum:MoveTo(targetRoot.Position)
+									-- Always move towards target if not in range (constrained to grid)
+									if dist > range then
+										local grid = getGridFromNPC(enemy)
+										local moveTarget = targetRoot.Position
+										if grid then
+											moveTarget = constrainToGrid(moveTarget, grid)
 										end
+										hum:MoveTo(moveTarget)
+									end
 									end
 								end
 							end
@@ -1312,6 +1401,43 @@ RunService.Heartbeat:Connect(function()
 							freezeNPC(enemy, true)
 						end
 					end
+				end
+			end
+		end
+	end
+	
+	-- Continuous boundary enforcement: keep all NPCs within their grid
+	for _, helper in ipairs(helpersFolder:GetChildren()) do
+		if helper:IsA("Model") then
+			local root = getRoot(helper)
+			if root then
+				local grid = getGridFromNPC(helper)
+				if grid and not isPositionInGrid(root.Position, grid) then
+					local constrainedPos = constrainToGrid(root.Position, grid)
+					-- Preserve Y position (height) but constrain X/Z
+					constrainedPos = Vector3.new(constrainedPos.X, root.Position.Y, constrainedPos.Z)
+					root.CFrame = CFrame.new(constrainedPos, root.CFrame.LookVector)
+					-- Stop any movement that would take them outside
+					root.AssemblyLinearVelocity = Vector3.zero
+					root.AssemblyAngularVelocity = Vector3.zero
+				end
+			end
+		end
+	end
+	
+	for _, enemy in ipairs(enemiesFolder:GetChildren()) do
+		if enemy:IsA("Model") then
+			local root = getRoot(enemy)
+			if root then
+				local grid = getGridFromNPC(enemy)
+				if grid and not isPositionInGrid(root.Position, grid) then
+					local constrainedPos = constrainToGrid(root.Position, grid)
+					-- Preserve Y position (height) but constrain X/Z
+					constrainedPos = Vector3.new(constrainedPos.X, root.Position.Y, constrainedPos.Z)
+					root.CFrame = CFrame.new(constrainedPos, root.CFrame.LookVector)
+					-- Stop any movement that would take them outside
+					root.AssemblyLinearVelocity = Vector3.zero
+					root.AssemblyAngularVelocity = Vector3.zero
 				end
 			end
 		end
@@ -1407,18 +1533,10 @@ helpersFolder.ChildAdded:Connect(function(helper)
 	-- ensure helpers start neutral/frozen
 	freezeNPC(helper, false)
 	
-	-- Cleanup on death - explode then destroy after 1 second
-	local hum = helper:FindFirstChildOfClass("Humanoid")
-	if hum then
-		hum.Died:Connect(function()
-			-- Clean up stored position
-			npcOriginalCFrames[helper] = nil
-			-- Explode and destroy after 1 second
-			task.spawn(function()
-				explodeAndDestroy(helper, 1)
-			end)
-		end)
-	end
+	-- Death handling: board instances can be destroyed freely
+	-- Blueprints are preserved in ServerStorage/HelperBlueprints
+	-- Wave end will respawn fresh board instances from blueprints
+	-- No special death handler needed - board instances can die/destroy as needed
 	
 	local ownerId = helper:GetAttribute("OwnerUserId")
 	local gridId = helper:GetAttribute("GridId")

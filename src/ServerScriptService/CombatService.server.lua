@@ -8,6 +8,7 @@
 --========================================================
 
 local RunService = game:GetService("RunService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 -- Folders
 local helpersFolder = workspace:FindFirstChild("Helpers") or Instance.new("Folder")
@@ -17,6 +18,62 @@ helpersFolder.Parent = workspace
 local enemiesFolder = workspace:FindFirstChild("Enemies") or Instance.new("Folder")
 enemiesFolder.Name = "Enemies"
 enemiesFolder.Parent = workspace
+
+-- Wave state tracking
+local waveActiveFlags = {} -- [islandId] = true/false
+
+-- Listen for wave state changes from WaveManagerServer
+local waveStateEvent = ReplicatedStorage:FindFirstChild("WaveStateEvent")
+if waveStateEvent then
+	waveStateEvent.Event:Connect(function(islandId, isActive)
+		if typeof(islandId) == "number" then
+			waveActiveFlags[islandId] = isActive
+		end
+	end)
+end
+
+-- Get island ID from helper/enemy
+local function getIslandIdFromModel(model)
+	local islandId = model:GetAttribute("IslandId")
+	if typeof(islandId) == "number" then
+		return islandId
+	end
+	
+	-- Try to get from GridId
+	local gridId = model:GetAttribute("GridId")
+	if gridId and typeof(gridId) == "string" then
+		-- Find grid and walk up to island
+		local parts = {}
+		for part in gridId:gmatch("[^.]+") do
+			table.insert(parts, part)
+		end
+		local current = workspace
+		for _, partName in ipairs(parts) do
+			current = current:FindFirstChild(partName)
+			if not current then return nil end
+		end
+		
+		-- Walk up to find Island model
+		while current and current.Parent and current.Parent ~= workspace do
+			if current:IsA("Model") then
+				local id = current:GetAttribute("IslandId")
+				if typeof(id) == "number" then
+					return id
+				end
+			end
+			current = current.Parent
+		end
+	end
+	
+	return nil
+end
+
+-- Check if wave is active for a model
+local function isWaveActiveForModel(model)
+	local islandId = getIslandIdFromModel(model)
+	if not islandId then return false end
+	return waveActiveFlags[islandId] == true
+end
 
 --========================
 -- CONFIG (tune these)
@@ -220,10 +277,15 @@ RunService.Heartbeat:Connect(function(dt)
 	local helpers = getModels(helpersFolder)
 	local enemies = getModels(enemiesFolder)
 
-	-- Helpers attack enemies (only within their grid)
+	-- Helpers attack enemies (only if wave is active)
 	for _, helper in ipairs(helpers) do
 		local hum, root = getHumanoidAndRoot(helper)
 		if isAliveHum(hum) and root then
+			-- Check if wave is active for this helper
+			if not isWaveActiveForModel(helper) then
+				continue -- Wave not active, helpers don't attack
+			end
+			
 			-- Get the grid this helper belongs to
 			local grid = getHelperGrid(helper)
 			
@@ -238,12 +300,17 @@ RunService.Heartbeat:Connect(function(dt)
 				doAttack(helper, target, dmg, aspd, range, grid)
 			end
 			
-			-- Constrain helper position to grid bounds
+			-- Constrain helper position to grid bounds (continuous enforcement)
 			if grid then
 				local currentPos = root.Position
 				if not isPositionInGrid(currentPos, grid) then
 					local constrainedPos = constrainToGrid(currentPos, grid)
+					-- Preserve Y position (height) but constrain X/Z
+					constrainedPos = Vector3.new(constrainedPos.X, currentPos.Y, constrainedPos.Z)
 					root.CFrame = CFrame.new(constrainedPos, root.CFrame.LookVector)
+					-- Stop any movement that would take them outside
+					root.AssemblyLinearVelocity = Vector3.zero
+					root.AssemblyAngularVelocity = Vector3.zero
 				end
 			end
 		end
@@ -256,15 +323,9 @@ RunService.Heartbeat:Connect(function(dt)
 			-- Get the grid this enemy belongs to
 			local grid = getHelperGrid(enemy) -- Reuse same function
 			
-			-- Check if wave is active for this grid
-			if grid then
-				local gridId = grid:GetFullName()
-				-- Check if wave is active (we need to access WaveManagerServer's waveActiveFlags)
-				-- For now, we'll check if enemy has a WaveActive attribute set by spawn
-				local waveActive = enemy:GetAttribute("WaveActive")
-				if not waveActive then
-					continue -- Wave not active, enemies don't attack
-				end
+			-- Check if wave is active for this enemy
+			if not isWaveActiveForModel(enemy) then
+				continue -- Wave not active, enemies don't attack
 			end
 			
 			-- Only find targets within the grid bounds
@@ -276,12 +337,17 @@ RunService.Heartbeat:Connect(function(dt)
 				doAttack(enemy, target, dmg, aspd, range, grid)
 			end
 			
-			-- Constrain enemy position to grid bounds
+			-- Constrain enemy position to grid bounds (continuous enforcement)
 			if grid then
 				local currentPos = root.Position
 				if not isPositionInGrid(currentPos, grid) then
 					local constrainedPos = constrainToGrid(currentPos, grid)
+					-- Preserve Y position (height) but constrain X/Z
+					constrainedPos = Vector3.new(constrainedPos.X, currentPos.Y, constrainedPos.Z)
 					root.CFrame = CFrame.new(constrainedPos, root.CFrame.LookVector)
+					-- Stop any movement that would take them outside
+					root.AssemblyLinearVelocity = Vector3.zero
+					root.AssemblyAngularVelocity = Vector3.zero
 				end
 			end
 		end

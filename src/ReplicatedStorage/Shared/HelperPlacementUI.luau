@@ -263,9 +263,18 @@ local function onMouseClick()
 		return
 	end
 	
-	local snappedWorld = snapToGridWorld(hitPosition, hitGridPart)
-	if not snappedWorld then
+	local snappedWorld, row, col = snapToGridWorld(hitPosition, hitGridPart)
+	if not snappedWorld or not row or not col then
 		_G.HelperPlacementData.statusText = "Invalid grid position"
+		_G.HelperPlacementData.statusColor = Color3.fromRGB(255, 100, 100)
+		_G.HelperPlacementData.updateTime = tick()
+		return
+	end
+	
+	-- Check if row is on player side (1-5 only)
+	local PLAYER_MIN_ROW, PLAYER_MAX_ROW = 1, 5
+	if row < PLAYER_MIN_ROW or row > PLAYER_MAX_ROW then
+		_G.HelperPlacementData.statusText = "Can't place on enemy side"
 		_G.HelperPlacementData.statusColor = Color3.fromRGB(255, 100, 100)
 		_G.HelperPlacementData.updateTime = tick()
 		return
@@ -328,7 +337,14 @@ task.spawn(function()
 		end
 		
 		local isOwned = isGridOwnedByLocalPlayer(hitGridPart)
-		if isOwned then
+		local snappedWorld, row, _col = snapToGridWorld(hitPosition, hitGridPart)
+		
+		-- Check if row is valid (1-5 for player side)
+		local PLAYER_MIN_ROW, PLAYER_MAX_ROW = 1, 5
+		local isValidRow = row and row >= PLAYER_MIN_ROW and row <= PLAYER_MAX_ROW
+		
+		-- Set highlight color based on ownership AND row validity
+		if isOwned and isValidRow then
 			highlight.Color = Color3.fromRGB(0, 255, 0)
 			selectionBox.Color3 = Color3.fromRGB(0, 255, 0)
 		else
@@ -336,7 +352,18 @@ task.spawn(function()
 			selectionBox.Color3 = Color3.fromRGB(255, 0, 0)
 		end
 		
-		local snappedWorld = snapToGridWorld(hitPosition, hitGridPart)
+		-- Update status text
+		if not isOwned then
+			_G.HelperPlacementData.statusText = "This grid belongs to another player!"
+			_G.HelperPlacementData.statusColor = Color3.fromRGB(255, 100, 100)
+		elseif not isValidRow then
+			_G.HelperPlacementData.statusText = "Can't place on enemy side"
+			_G.HelperPlacementData.statusColor = Color3.fromRGB(255, 100, 100)
+		else
+			_G.HelperPlacementData.statusText = "Click to place"
+			_G.HelperPlacementData.statusColor = Color3.fromRGB(200, 200, 200)
+		end
+		
 		if snappedWorld then
 			local floorY = hitGridPart.Position.Y + (hitGridPart.Size.Y / 2)
 			highlight.Position = Vector3.new(snappedWorld.X, floorY + 0.25, snappedWorld.Z)

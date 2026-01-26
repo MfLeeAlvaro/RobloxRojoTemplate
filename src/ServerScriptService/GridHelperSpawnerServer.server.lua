@@ -230,6 +230,7 @@ local function ensurePlayerTable(grid, userId)
 end
 
 -- Check if cell is occupied, auto-clearing stale entries
+-- IMPORTANT: Hidden/dead helpers still count as occupying the tile
 local function isCellOccupied(grid, userId, r, c)
 	ensurePlayerTable(grid, userId)
 	local cell = occupied[grid][userId][r] and occupied[grid][userId][r][c]
@@ -243,6 +244,7 @@ local function isCellOccupied(grid, userId, r, c)
 		return false
 	end
 
+	-- Helper exists and is in Helpers folder - tile is occupied (even if hidden/dead)
 	return true
 end
 
@@ -386,7 +388,7 @@ Players.PlayerRemoving:Connect(function(plr)
 	end
 end)
 
-local function getAllowedRowsForPlayer(player)
+local function _getAllowedRowsForPlayer(player) -- Unused: replaced with simple 1-5 check
 	for i, uid in ipairs(playerOrder) do
 		if uid == player.UserId then
 			if i == 1 then return 1, 5 end
@@ -443,14 +445,10 @@ placeHelperEvent.OnServerEvent:Connect(function(player, hitGrid, worldPosition, 
 		return
 	end
 
-	-- Check half-board restriction
-	local minRow, maxRow = getAllowedRowsForPlayer(player)
-	if not minRow then
-		placeHelperEvent:FireClient(player, false, "You are not assigned a side (only first 2 players can place).")
-		return
-	end
-	if row < minRow or row > maxRow then
-		placeHelperEvent:FireClient(player, false, "You can only place on your side of the board.")
+	-- Check half-board restriction: all players can only place on rows 1-5 (player side)
+	local PLAYER_MIN_ROW, PLAYER_MAX_ROW = 1, 5
+	if row < PLAYER_MIN_ROW or row > PLAYER_MAX_ROW then
+		placeHelperEvent:FireClient(player, false, "You can only place on your side.")
 		return
 	end
 
@@ -468,7 +466,14 @@ placeHelperEvent.OnServerEvent:Connect(function(player, hitGrid, worldPosition, 
 	-- NEW CODE: if isCellOccupied(hitGrid, player.UserId, row, col) then
 	-- WHY CHANGED: Occupancy is now per-grid + per-player, and auto-clears stale entries
 	-- ============================================================
-	-- Occupancy check (per-grid + per-player, with auto-cleanup)
+	-- Occupancy check: check blueprints first (authoritative), then grid occupancy
+	local gridId = hitGrid:GetFullName()
+	if _G.IsHelperTileOccupied and _G.IsHelperTileOccupied(gridId, row, col) then
+		placeHelperEvent:FireClient(player, false, "That cell is already occupied.")
+		return
+	end
+	
+	-- Also check grid occupancy (for backwards compatibility)
 	if isCellOccupied(hitGrid, player.UserId, row, col) then
 		placeHelperEvent:FireClient(player, false, "That cell is already occupied.")
 		return
@@ -511,6 +516,11 @@ placeHelperEvent.OnServerEvent:Connect(function(player, hitGrid, worldPosition, 
 	unit:SetAttribute("GridId", hitGrid:GetFullName()) -- Store grid ID for combat system
 	unit:SetAttribute("SpawnRow", row) -- Store spawn row for occupancy cleanup
 	unit:SetAttribute("SpawnCol", col) -- Store spawn col for occupancy cleanup
+	-- Also set PlaceRow/PlaceCol (HelperRespawnManager uses these)
+	unit:SetAttribute("PlaceRow", row)
+	unit:SetAttribute("PlaceCol", col)
+	-- Set HelperType for HelperRespawnManager (alias of UnitType)
+	unit:SetAttribute("HelperType", helperName)
 	if islandId then
 		unit:SetAttribute("IslandId", islandId) -- Store IslandId for merge system
 	end
@@ -567,8 +577,24 @@ placeHelperEvent.OnServerEvent:Connect(function(player, hitGrid, worldPosition, 
 
 	unit:PivotTo(cf) -- ✅ correct placement happens here
 	
+	-- Store OriginalCFrame if not set
+	if not unit:GetAttribute("OriginalCFrame") then
+		local root = unit:FindFirstChild("HumanoidRootPart") or unit.PrimaryPart
+		if root then
+			unit:SetAttribute("OriginalCFrame", root.CFrame)
+		else
+			-- Use the computed CFrame
+			unit:SetAttribute("OriginalCFrame", cf)
+		end
+	end
+	
 	-- Parent AFTER attributes and positioning are set
 	unit.Parent = helpersFolder
+
+	-- Save blueprint (authoritative copy)
+	if _G.SaveHelperBlueprint then
+		_G.SaveHelperBlueprint(unit)
+	end
 
 	-- ============================================================
 	-- UPDATED: Store occupancy on the specific grid (stores helper instance)
