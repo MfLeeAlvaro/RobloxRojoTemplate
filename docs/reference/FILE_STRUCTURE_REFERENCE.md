@@ -128,11 +128,16 @@ This document lists all files that should exist in the cleaned-up project struct
 
 - `README.md` - Project readme
 - `CHANGELOG.md` - Project changelog
+- `default.project.json` - Rojo project configuration
+- `aftman.toml` - Tool management config (Rojo, Wally)
+- `wally.toml` - Wally package manager config
+- `wally.lock` - Wally lock file (auto-generated)
+- `sourcemap.json` - Rojo sourcemap (auto-generated)
 - `docs/PROJECT_ARCHITECTURE.md` - System architecture documentation
 - `docs/cleanup/CLEANUP_GUIDE.md` - Cleanup instructions
 - `docs/reference/FILE_STRUCTURE_REFERENCE.md` - This file
+- `docs/reference/PROJECT_SETUP_REFERENCE.md` - Project setup and configuration reference
 - `docs/systems/WAVE_SYSTEM_SETUP_GUIDE.md` - Wave system setup guide
-- `wally.toml` - Wally package manager config
 - `wally.lock` - Wally lock file
 - `aftman.toml` - Aftman config
 - `default.project.json` - Rojo project config

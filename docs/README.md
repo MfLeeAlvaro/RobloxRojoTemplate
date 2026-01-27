@@ -27,6 +27,7 @@ docs/
 - **[PROJECT_ARCHITECTURE.md](PROJECT_ARCHITECTURE.md)** - Complete system architecture and design
 - **[reference/FILE_STRUCTURE_REFERENCE.md](reference/FILE_STRUCTURE_REFERENCE.md)** - File structure reference
 - **[reference/ATTRIBUTES_REFERENCE.md](reference/ATTRIBUTES_REFERENCE.md)** - Attributes reference guide
+- **[reference/PROJECT_SETUP_REFERENCE.md](reference/PROJECT_SETUP_REFERENCE.md)** - Project setup and Rojo configuration reference
 
 ### Cleanup & Refactoring
 - **[cleanup/CLEANUP_COMPLETED.md](cleanup/CLEANUP_COMPLETED.md)** - Cleanup progress report
