@@ -36,25 +36,52 @@ src/
 - [Rojo](https://rojo.space/docs/installation) 7.7.0+
 - [Aftman](https://github.com/LPGhatguy/aftman) (for tool management)
 - Roblox Studio
+- Git
 
-### Setup
+### First Time Setup
 
-1. **Install dependencies:**
+1. **Clone the repository and checkout the branch:**
+   ```bash
+   git clone https://github.com/MfLeeAlvaro/RobloxRojoTemplate.git
+   cd RobloxRojoTemplate
+   git checkout Trainyourslave
+   ```
+
+2. **Install dependencies:**
    ```bash
    aftman install
    ```
 
-2. **Build the place:**
+3. **Build the place:**
    ```bash
    rojo build -o "Trainyourslave.rbxlx"
    ```
 
-3. **Open in Studio and start Rojo server:**
+4. **Open in Studio and start Rojo server:**
    ```bash
    rojo serve
    ```
 
-4. **Connect Rojo plugin in Studio** to sync files
+5. **Connect Rojo plugin in Studio** to sync files
+
+### Updating Your Local Copy
+
+If you already have the repository cloned:
+
+```bash
+# Navigate to project folder
+cd RobloxRojoTemplate
+
+# Switch to Trainyourslave branch (if not already on it)
+git checkout Trainyourslave
+
+# Pull latest changes
+git pull origin Trainyourslave
+```
+
+**Note**: If you have local changes, stash them first: `git stash` then `git pull`, then `git stash pop`
+
+For more detailed instructions, see [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md)
 
 ## 📚 Documentation
 
