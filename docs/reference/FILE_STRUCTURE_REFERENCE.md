@@ -127,10 +127,11 @@ This document lists all files that should exist in the cleaned-up project struct
 ## 📁 Root Level
 
 - `README.md` - Project readme
-- `PROJECT_ARCHITECTURE.md` - System architecture documentation
-- `CLEANUP_GUIDE.md` - Cleanup instructions
-- `FILE_STRUCTURE_REFERENCE.md` - This file
-- `WAVE_SYSTEM_SETUP_GUIDE.md` - Wave system setup guide
+- `CHANGELOG.md` - Project changelog
+- `docs/PROJECT_ARCHITECTURE.md` - System architecture documentation
+- `docs/cleanup/CLEANUP_GUIDE.md` - Cleanup instructions
+- `docs/reference/FILE_STRUCTURE_REFERENCE.md` - This file
+- `docs/systems/WAVE_SYSTEM_SETUP_GUIDE.md` - Wave system setup guide
 - `wally.toml` - Wally package manager config
 - `wally.lock` - Wally lock file
 - `aftman.toml` - Aftman config

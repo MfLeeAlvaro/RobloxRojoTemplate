@@ -58,11 +58,21 @@ src/
 
 ## 📚 Documentation
 
-- **[PROJECT_ARCHITECTURE.md](PROJECT_ARCHITECTURE.md)** - Complete system architecture
-- **[FILE_STRUCTURE_REFERENCE.md](FILE_STRUCTURE_REFERENCE.md)** - File structure reference
-- **[ATTRIBUTES_REFERENCE.md](ATTRIBUTES_REFERENCE.md)** - Attributes reference guide
-- **[CLEANUP_COMPLETED.md](CLEANUP_COMPLETED.md)** - Cleanup progress report
-- **[CLEANUP_MERGE_COMPLETE.md](CLEANUP_MERGE_COMPLETE.md)** - Merge completion report
+### Architecture & Reference
+- **[docs/PROJECT_ARCHITECTURE.md](docs/PROJECT_ARCHITECTURE.md)** - Complete system architecture
+- **[docs/reference/FILE_STRUCTURE_REFERENCE.md](docs/reference/FILE_STRUCTURE_REFERENCE.md)** - File structure reference
+- **[docs/reference/ATTRIBUTES_REFERENCE.md](docs/reference/ATTRIBUTES_REFERENCE.md)** - Attributes reference guide
+
+### Cleanup & Refactoring
+- **[docs/cleanup/CLEANUP_COMPLETED.md](docs/cleanup/CLEANUP_COMPLETED.md)** - Cleanup progress report
+- **[docs/cleanup/CLEANUP_MERGE_COMPLETE.md](docs/cleanup/CLEANUP_MERGE_COMPLETE.md)** - Merge completion report
+- **[docs/cleanup/CLEANUP_GUIDE.md](docs/cleanup/CLEANUP_GUIDE.md)** - Cleanup guide and instructions
+
+### System Guides
+- **[docs/systems/RACE_SYSTEM_DESIGN.md](docs/systems/RACE_SYSTEM_DESIGN.md)** - Race system design documentation
+- **[docs/systems/RACE_SYSTEM_QUICK_START.md](docs/systems/RACE_SYSTEM_QUICK_START.md)** - Race system quick start guide
+- **[docs/systems/WAVE_SYSTEM_SETUP_GUIDE.md](docs/systems/WAVE_SYSTEM_SETUP_GUIDE.md)** - Wave system setup guide
+- **[docs/systems/PLACEMENT_PATCHES.md](docs/systems/PLACEMENT_PATCHES.md)** - Placement system patches and notes
 
 ## 🔧 Key Systems
 
@@ -76,11 +86,12 @@ src/
 
 ## 📝 Recent Changes
 
-See [CLEANUP_MERGE_COMPLETE.md](CLEANUP_MERGE_COMPLETE.md) for details on recent refactoring:
+See [CHANGELOG.md](CHANGELOG.md) for complete change history and [docs/cleanup/CLEANUP_MERGE_COMPLETE.md](docs/cleanup/CLEANUP_MERGE_COMPLETE.md) for details on recent refactoring:
 - Files reorganized into logical folders
 - Duplicate files merged
 - Test files removed
 - Improved code organization
+- Documentation organized into `docs/` folder structure
 
 ## 🔗 Links
 

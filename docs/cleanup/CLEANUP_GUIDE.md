@@ -357,8 +357,8 @@ After cleanup, verify:
 
 ## 📚 Additional Resources
 
-- See `PROJECT_ARCHITECTURE.md` for system documentation
-- See `WAVE_SYSTEM_SETUP_GUIDE.md` for wave system setup
+- See `../PROJECT_ARCHITECTURE.md` for system documentation
+- See `../systems/WAVE_SYSTEM_SETUP_GUIDE.md` for wave system setup
 - Check git history for original file locations if needed
 
 ---
