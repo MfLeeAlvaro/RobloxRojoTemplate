@@ -33,7 +33,7 @@ src/
 ## 🚀 Getting Started
 
 ### Prerequisites
-- [Rojo](https://rojo.space/docs/installation) 7.7.0+
+- [Rojo](https://rojo.space/docs/installation) 7.6.1+
 - [Aftman](https://github.com/LPGhatguy/aftman) (for tool management)
 - Roblox Studio
 - Git
