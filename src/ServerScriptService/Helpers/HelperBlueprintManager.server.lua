@@ -39,7 +39,8 @@ end
 -- ===== BLUEPRINT MANAGEMENT =====
 
 -- Save a blueprint from a board instance
-local function saveBlueprint(boardInstance)
+-- If oldHelperKey is provided, removes the old blueprint first (for moves)
+local function saveBlueprint(boardInstance, oldHelperKey)
 	if not boardInstance or not boardInstance.Parent then
 		return false
 	end
@@ -50,10 +51,19 @@ local function saveBlueprint(boardInstance)
 		return false
 	end
 	
-	-- Check if blueprint already exists
+	-- Remove old blueprint if moving (oldHelperKey provided and different from new key)
+	if oldHelperKey and oldHelperKey ~= helperKey then
+		local oldBlueprint = blueprintFolder:FindFirstChild(oldHelperKey)
+		if oldBlueprint then
+			oldBlueprint:Destroy()
+			print("[HelperBlueprintManager] ❌ Removed old blueprint: " .. oldHelperKey)
+		end
+	end
+	
+	-- Check if blueprint already exists at new position
 	local existingBlueprint = blueprintFolder:FindFirstChild(helperKey)
 	if existingBlueprint then
-		-- Update existing blueprint
+		-- Update existing blueprint (shouldn't happen normally, but handle it)
 		existingBlueprint:Destroy()
 	end
 	
@@ -127,6 +137,12 @@ local function spawnFromBlueprint(blueprint)
 	-- Clone blueprint to create board instance
 	local boardInstance = blueprint:Clone()
 	boardInstance.Name = helperType .. "_" .. (blueprint:GetAttribute("OwnerUserId") or "Unknown") .. "_" .. os.time()
+	
+	-- Disable player collision (prevent players from getting stuck)
+	if _G.DisablePlayerCollision then
+		_G.DisablePlayerCollision(boardInstance)
+	end
+	
 	boardInstance.Parent = helpersFolder
 	
 	-- Set HelperKey on board instance
@@ -153,13 +169,21 @@ local function spawnFromBlueprint(blueprint)
 		hum.MaxHealth = baseHealth * (2 ^ starLevel)
 		hum.Health = hum.MaxHealth
 		
-		-- Store original walk speed/jump power if not set
-		if boardInstance:GetAttribute("OriginalWalkSpeed") == nil then
-			boardInstance:SetAttribute("OriginalWalkSpeed", hum.WalkSpeed > 0 and hum.WalkSpeed or 16)
+		-- Get original walk speed/jump power from blueprint FIRST (before freezing)
+		local originalWS = blueprint:GetAttribute("OriginalWalkSpeed")
+		local originalJP = blueprint:GetAttribute("OriginalJumpPower")
+		
+		-- If blueprint doesn't have it, use current humanoid values (before freezing)
+		if not originalWS or typeof(originalWS) ~= "number" or originalWS <= 0 then
+			originalWS = hum.WalkSpeed > 0 and hum.WalkSpeed or 16
 		end
-		if boardInstance:GetAttribute("OriginalJumpPower") == nil then
-			boardInstance:SetAttribute("OriginalJumpPower", hum.JumpPower > 0 and hum.JumpPower or 50)
+		if not originalJP or typeof(originalJP) ~= "number" or originalJP <= 0 then
+			originalJP = hum.JumpPower > 0 and hum.JumpPower or 50
 		end
+		
+		-- Store the original values BEFORE freezing
+		boardInstance:SetAttribute("OriginalWalkSpeed", originalWS)
+		boardInstance:SetAttribute("OriginalJumpPower", originalJP)
 		
 		-- Freeze for prep phase
 		hum.WalkSpeed = 0

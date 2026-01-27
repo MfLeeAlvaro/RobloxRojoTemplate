@@ -1,7 +1,7 @@
 --========================================================
--- ShopService (SERVER)
--- Sends ShopUpdate to ShopClient UI, handles Buy, tracks inventory on Player attributes.
--- Exposes _G.ShopService.Send(player) and _G.ShopService.NextWave()
+-- HelperShop.server.lua
+-- Unified shop system: handles shop UI, purchases, and inventory
+-- Merged from ShopService.server.lua and HelperShopServer.server.lua
 --========================================================
 
 local Players = game:GetService("Players")
@@ -10,12 +10,19 @@ local ServerStorage = game:GetService("ServerStorage")
 
 local TEMPLATES_FOLDER = ServerStorage:WaitForChild("HelperTemplates")
 
--- RemoteEvent: ShopEvent (ShopClient expects this)
+-- RemoteEvents
 local shopEvent = ReplicatedStorage:FindFirstChild("ShopEvent")
 if not shopEvent then
 	shopEvent = Instance.new("RemoteEvent")
 	shopEvent.Name = "ShopEvent"
 	shopEvent.Parent = ReplicatedStorage
+end
+
+local helperShopEvent = ReplicatedStorage:FindFirstChild("HelperShopEvent")
+if not helperShopEvent then
+	helperShopEvent = Instance.new("RemoteEvent")
+	helperShopEvent.Name = "HelperShopEvent"
+	helperShopEvent.Parent = ReplicatedStorage
 end
 
 --========================
@@ -101,6 +108,37 @@ local function getInventorySnapshot(player: Player)
 end
 
 --========================
+-- HELPER LIST (from HelperShopServer)
+--========================
+local function getAvailableHelpers()
+	local helpers = {}
+	for _, child in ipairs(TEMPLATES_FOLDER:GetChildren()) do
+		if child:IsA("Model") then
+			table.insert(helpers, child.Name)
+		elseif child:IsA("Folder") then
+			local model = child:FindFirstChildOfClass("Model")
+			if model then
+				table.insert(helpers, child.Name)
+			else
+				-- Check if folder contains parts
+				local hasParts = false
+				for _, descendant in ipairs(child:GetDescendants()) do
+					if descendant:IsA("BasePart") or descendant:IsA("Model") then
+						hasParts = true
+						break
+					end
+				end
+				if hasParts then
+					table.insert(helpers, child.Name)
+				end
+			end
+		end
+	end
+	table.sort(helpers)
+	return helpers
+end
+
+--========================
 -- SHOP ROLLING
 --========================
 local function weightedPick(): string
@@ -156,6 +194,16 @@ local function sendShopToPlayer(player: Player)
 	})
 end
 
+-- Send helpers list (from HelperShopServer)
+local function sendHelpersList(player: Player)
+	local helpers = getAvailableHelpers()
+	print("[HelperShop] Sending helpers list to", player.Name, "- Count:", #helpers)
+	
+	helperShopEvent:FireClient(player, "HelpersList", {
+		helpers = helpers,
+	})
+end
+
 --========================
 -- PUBLIC API
 --========================
@@ -175,7 +223,7 @@ function ShopService.NextWave()
 end
 
 function ShopService.Reroll(player: Player)
-	-- Optional manual reroll if you ever want it (you can ignore this)
+	-- Optional manual reroll if you ever want it
 	local state = getShopForPlayer(player)
 	state.offers = rollOffers()
 	sendShopToPlayer(player)
@@ -190,6 +238,7 @@ Players.PlayerAdded:Connect(function(player)
 	ensureInventoryAttributes(player)
 	setShopForPlayer(player, currentWave)
 	sendShopToPlayer(player)
+	sendHelpersList(player)
 end)
 
 Players.PlayerRemoving:Connect(function(player)
@@ -197,8 +246,10 @@ Players.PlayerRemoving:Connect(function(player)
 end)
 
 --========================
--- REMOTE HANDLER
+-- REMOTE HANDLERS
 --========================
+
+-- ShopEvent handler (from ShopService)
 shopEvent.OnServerEvent:Connect(function(player, action, payload)
 	if action == "RequestShop" then
 		sendShopToPlayer(player)
@@ -212,7 +263,7 @@ shopEvent.OnServerEvent:Connect(function(player, action, payload)
 
 		-- Validate unit exists in ServerStorage templates
 		local template = TEMPLATES_FOLDER:FindFirstChild(unitName)
-		if not template or not template:IsA("Model") then
+		if not template then
 			shopEvent:FireClient(player, "BuyResult", { ok = false, msg = "Invalid unit." })
 			sendShopToPlayer(player)
 			return
@@ -248,4 +299,12 @@ shopEvent.OnServerEvent:Connect(function(player, action, payload)
 	end
 end)
 
-print("✅ ShopService loaded (reworked)")
+-- HelperShopEvent handler (from HelperShopServer)
+helperShopEvent.OnServerEvent:Connect(function(player, action, data)
+	if action == "RequestHelpers" then
+		sendHelpersList(player)
+		return
+	end
+end)
+
+print("✅ HelperShop loaded (merged from ShopService + HelperShopServer)")

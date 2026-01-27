@@ -385,6 +385,11 @@ local function handlePlace(player, helperName, hitCFrame)
 	local helper = template:Clone()
 	helper.Name = helperName .. "_" .. player.Name .. "_" .. os.time()
 	
+	-- Disable player collision (prevent players from getting stuck)
+	if _G.DisablePlayerCollision then
+		_G.DisablePlayerCollision(helper)
+	end
+	
 	-- Find model inside if it's a folder
 	local modelToPosition = helper
 	if helper:IsA("Folder") then

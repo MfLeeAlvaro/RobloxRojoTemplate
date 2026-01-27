@@ -14,7 +14,7 @@ _G.ShopUIData = _G.ShopUIData or {
 	costs = {},
 	coins = 0,
 	inventory = {},
-	isVisible = true,
+	isVisible = false, -- Hidden by default
 	updateTime = 0,
 }
 
@@ -87,7 +87,7 @@ local function ShopUI()
 	local costs = data.costs or {}
 	local coins = data.coins or 0
 	local inventory = data.inventory or {}
-	local isVisible = data.isVisible ~= false -- Default to true
+	local isVisible = data.isVisible == true -- Default to false (hidden)
 	
 	-- Don't render if not visible
 	if not isVisible then

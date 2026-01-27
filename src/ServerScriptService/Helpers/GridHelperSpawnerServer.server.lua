@@ -507,6 +507,11 @@ placeHelperEvent.OnServerEvent:Connect(function(player, hitGrid, worldPosition, 
 
 	local unit = modelToClone:Clone()
 	
+	-- Disable player collision (prevent players from getting stuck)
+	if _G.DisablePlayerCollision then
+		_G.DisablePlayerCollision(unit)
+	end
+	
 	-- Get IslandId from grid (for merge system)
 	local islandId = getIslandIdFromGrid(hitGrid)
 	

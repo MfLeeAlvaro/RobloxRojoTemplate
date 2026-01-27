@@ -12,6 +12,9 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local workspace = game:GetService("Workspace")
 
+-- Note: DisablePlayerCollision utility is loaded automatically and exposes _G.DisablePlayerCollision
+-- No need to require it here - it will be available if the Utils folder script runs
+
 -- ===== CONFIG =====
 local GRID_SIZE = 5
 local GRID_COLS = 10
@@ -467,21 +470,42 @@ end
 
 local function unfreezeNPC(npc, isEnemy)
 	local hum = npc:FindFirstChildOfClass("Humanoid")
-	if not hum then return end
+	if not hum then 
+		warn("[WaveManagerServer] ⚠️ Cannot unfreeze NPC: " .. npc.Name .. " - no Humanoid found")
+		return 
+	end
 	
 	npc:SetAttribute("Frozen", false)
 
 	ensureAnimator(hum)
 
+	-- Get original walk speed/jump power from attributes
 	local ws = npc:GetAttribute("OriginalWalkSpeed")
 	local jp = npc:GetAttribute("OriginalJumpPower")
-	if typeof(ws) ~= "number" or ws <= 0 then ws = 16 end
-	if typeof(jp) ~= "number" or jp <= 0 then jp = 50 end
+	
+	-- If not set, use defaults or current values (but ensure they're > 0)
+	if typeof(ws) ~= "number" or ws <= 0 then 
+		-- Try to get from humanoid's current value (might be 0 if frozen)
+		ws = hum.WalkSpeed > 0 and hum.WalkSpeed or 16
+		-- Store it for next time
+		npc:SetAttribute("OriginalWalkSpeed", ws)
+	end
+	if typeof(jp) ~= "number" or jp <= 0 then 
+		jp = hum.JumpPower > 0 and hum.JumpPower or 50
+		npc:SetAttribute("OriginalJumpPower", jp)
+	end
 
+	-- CRITICAL: Always set WalkSpeed and JumpPower to positive values
 	hum.WalkSpeed = ws
 	hum.JumpPower = jp
-
+	
+	-- Clear any movement commands that might be keeping them frozen
+	hum:Move(Vector3.zero)
+	
+	-- Set aggressive flag so they can participate in combat
 	npc:SetAttribute("Aggressive", true)
+	
+	print("[WaveManagerServer] ✅ Unfroze NPC: " .. npc.Name .. " (WalkSpeed: " .. ws .. ", JumpPower: " .. jp .. ")")
 end
 
 -- Make body parts fly away at high speed and destroy after delay
@@ -764,6 +788,10 @@ end
 	local enemy = template:Clone()
 	enemy.Name = templateName .. "_" .. islandId .. "_" .. os.time()
 	
+	-- Disable player collision (prevent players from getting stuck)
+	-- Do this AFTER setting attributes and parenting, so it doesn't interfere with spawn
+	-- The ChildAdded connection in DisablePlayerCollision will handle it automatically
+	
 	-- Set attributes (CRITICAL: Set IslandId and GridId)
 	enemy:SetAttribute("TargetUserId", userId)
 	enemy:SetAttribute("IslandId", islandId)
@@ -823,6 +851,13 @@ end
 	
 	-- Parent to enemies folder
 	enemy.Parent = enemiesFolder
+	
+	-- Disable player collision AFTER parenting (ChildAdded connection will handle it, but do it explicitly too)
+	if _G.DisablePlayerCollision then
+		pcall(function()
+			_G.DisablePlayerCollision(enemy)
+		end)
+	end
 	
 	-- Track enemy in per-island set (OPTIMIZATION)
 	addToSet(enemiesByIsland, islandId, enemy)
@@ -913,10 +948,20 @@ local function spawnEnemiesForWaveOnIsland(island, userId, wave)
 		batchSize = batchSize or 6
 		local spawned = 0
 		
+		print("[WaveManagerServer] Spawning " .. count .. " enemies in batches of " .. batchSize)
+		
 		for i = 1, count do
 			local enemyType = selectEnemyType(wave)
-			if spawnEnemyForIsland(island, userId, enemyType, wave, false, false) then
+			print("[WaveManagerServer] Attempting to spawn enemy #" .. i .. " of type: " .. enemyType)
+			local success, result = pcall(function()
+				return spawnEnemyForIsland(island, userId, enemyType, wave, false, false)
+			end)
+			
+			if success and result then
 				spawned = spawned + 1
+				print("[WaveManagerServer] ✅ Successfully spawned enemy #" .. i)
+			else
+				warn("[WaveManagerServer] ❌ Failed to spawn enemy #" .. i .. ": " .. tostring(result))
 			end
 			
 			if (i % batchSize) == 0 then
@@ -924,6 +969,7 @@ local function spawnEnemiesForWaveOnIsland(island, userId, wave)
 			end
 		end
 		
+		print("[WaveManagerServer] Finished spawning batch: " .. spawned .. " / " .. count .. " enemies spawned")
 		return spawned
 	end
 	
@@ -1026,6 +1072,15 @@ local function startWaveForPlayer(player)
 	end
 	waveStateEvent:Fire(islandId, true)
 	
+	-- Also fire to clients via RemoteEvent (for drag system)
+	local waveStateRemote = ReplicatedStorage:FindFirstChild("WaveStateRemote")
+	if not waveStateRemote then
+		waveStateRemote = Instance.new("RemoteEvent")
+		waveStateRemote.Name = "WaveStateRemote"
+		waveStateRemote.Parent = ReplicatedStorage
+	end
+	waveStateRemote:FireAllClients(islandId, true)
+	
 	local wave = currentWaveNumbers[islandId] or 1
 	currentWaveNumbers[islandId] = wave
 	
@@ -1066,6 +1121,27 @@ local function startWaveForPlayer(player)
 	for i, helper in ipairs(helpers) do
 		print("[WaveManagerServer]     - Unfreezing helper #" .. i .. ": " .. helper.Name)
 		unfreezeNPC(helper, false)
+		-- Double-check after a brief moment
+		task.wait(0.05)
+		local hum = helper:FindFirstChildOfClass("Humanoid")
+		if hum then
+			print("[WaveManagerServer]       ✅ Helper " .. helper.Name .. " WalkSpeed: " .. hum.WalkSpeed .. ", JumpPower: " .. hum.JumpPower .. ", Aggressive: " .. tostring(helper:GetAttribute("Aggressive")))
+		end
+	end
+	
+	-- Also check for any helpers that might have been missed (spawned from blueprints)
+	-- Refresh helper list after a brief delay to catch any that were just spawned
+	task.wait(0.2)
+	local refreshedHelpers = getHelpersForIsland(playerIsland)
+	if #refreshedHelpers > #helpers then
+		print("[WaveManagerServer]   - Found " .. (#refreshedHelpers - #helpers) .. " additional helpers, unfreezing...")
+		for _, helper in ipairs(refreshedHelpers) do
+			-- Only unfreeze if not already unfrozen
+			if helper:GetAttribute("Frozen") == true or helper:GetAttribute("Aggressive") ~= true then
+				print("[WaveManagerServer]     - Unfreezing missed helper: " .. helper.Name)
+				unfreezeNPC(helper, false)
+			end
+		end
 	end
 	
 	print("[WaveManagerServer] ✅ All NPCs unfrozen for wave " .. wave)
@@ -1093,6 +1169,12 @@ local function startWaveForPlayer(player)
 				waveActiveFlags[islandId] = false
 				activeWavesByIsland[islandId] = false
 				
+				-- Signal wave end to clients
+				local waveStateRemote = ReplicatedStorage:FindFirstChild("WaveStateRemote")
+				if waveStateRemote then
+					waveStateRemote:FireAllClients(islandId, false)
+				end
+				
 				-- Freeze remaining enemies
 				for _, enemy in ipairs(currentEnemies) do
 					freezeNPC(enemy, true)
@@ -1111,6 +1193,12 @@ local function startWaveForPlayer(player)
 				waveActiveFlags[islandId] = false
 				activeWavesByIsland[islandId] = false
 				currentWaveNumbers[islandId] = wave + 1
+				
+				-- Signal wave end to clients
+				local waveStateRemote = ReplicatedStorage:FindFirstChild("WaveStateRemote")
+				if waveStateRemote then
+					waveStateRemote:FireAllClients(islandId, false)
+				end
 				
 				-- ✅ Reset helpers: destroy board instances, respawn fresh from blueprints
 				if _G.ResetHelpersOnIsland then
