@@ -2,8 +2,7 @@
 
 All notable changes to the Trainyourslave project will be documented in this file.
 
-## [2.0] - December 2024
-
+## [2.0] - January 2026
 ### 🎯 Major Refactoring - Project Cleanup
 
 #### Added
