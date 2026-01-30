@@ -1,10 +1,10 @@
 # Trainyourslave
 
-A tower defense/auto-battler game built with Rojo and React-Roblox.
+A auto-battler game built with Rojo and React-Roblox.
 
 ## 🎮 Game Overview
 
-**Trainyourslave** is a Roblox tower defense game where players:
+**Trainyourslave** is a Roblox auto-battler game where players:
 - Place helpers on a grid-based island
 - Purchase units from a shop system
 - Start waves of enemies that spawn and fight helpers
@@ -33,7 +33,7 @@ src/
 ## 🚀 Getting Started
 
 ### Prerequisites
-- [Rojo](https://rojo.space/docs/installation) 7.7.0+
+- [Rojo](https://rojo.space/docs/installation) 7.6.1+
 - [Aftman](https://github.com/LPGhatguy/aftman) (for tool management)
 - Roblox Studio
 - Git
